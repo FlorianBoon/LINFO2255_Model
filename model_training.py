@@ -6,7 +6,7 @@ from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error
 import matplotlib.pyplot as plt
 from sklearn.ensemble import HistGradientBoostingRegressor
-
+import joblib
 
 
 def analyze_data(df):
@@ -17,6 +17,80 @@ def analyze_data(df):
     print(df.shape)
     print(df.dtypes)
     print(df.isnull().sum())
+    
+
+def plot_attendance_by_year(df):
+    """Plot attendance for the last three years and COVID years."""
+
+    # Keep valid observations
+    df = df[df["n_expected"] > 0].copy()
+
+    # Aggregate attendance by year and week
+    def aggregate_attendance(data):
+        weekly = (
+            data.groupby(
+                ["academic_year", "week_since_start"],
+                observed=True
+            )
+            .agg(
+                attended=("n_attended", "sum"),
+                expected=("n_expected", "sum"),
+            )
+            .reset_index()
+        )
+
+        weekly["attendance_rate"] = (
+            weekly["attended"] / weekly["expected"]
+        )
+
+        return weekly
+
+    # Last three academic years
+    last_three_years = sorted(
+        df["academic_year"].dropna().unique()
+    )[-3:]
+
+    last_three_years_data = aggregate_attendance(
+        df[df["academic_year"].isin(last_three_years)]
+    )
+
+    # COVID observations only
+    covid_df = df[
+        df["covid_period"] == "During COVID"
+    ]
+
+    covid_data = aggregate_attendance(covid_df)
+
+    # Plot both graphs
+    fig, axes = plt.subplots(
+        1, 2, figsize=(16, 6), sharey=True
+    )
+
+    datasets = [
+        (last_three_years_data, "Last three academic years"),
+        (covid_data, "COVID period"),
+    ]
+
+    for ax, (data, title) in zip(axes, datasets):
+        for year, year_data in data.groupby("academic_year"):
+            ax.plot(
+                year_data["week_since_start"],
+                year_data["attendance_rate"],
+                marker="o",
+                label=str(int(year)),
+            )
+
+        ax.set_xlabel("Week since start")
+        ax.set_title(title)
+        ax.set_ylim(0, 1)
+        ax.grid(True, alpha=0.3)
+        ax.legend(title="Academic year")
+
+    axes[0].set_ylabel("Attendance rate")
+    fig.suptitle("Attendance by Week and Academic Year")
+
+    plt.tight_layout()
+    plt.show()
 
 
 
@@ -116,4 +190,6 @@ def train_model(df):
 if __name__ == "__main__":
     df = pyreadr.read_r("data/agg_data_weekly(1).rds")[None]
     df = clean_model(df)
+    analyze_data(df)
+    plot_attendance_by_year(df)
     model = train_model(df)
